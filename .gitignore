@@ -48,3 +48,5 @@ Thumbs.db
 
 # Env/config
 application.properties
+
+.gitignore
