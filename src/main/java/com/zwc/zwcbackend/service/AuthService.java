@@ -5,7 +5,10 @@ import com.zwc.zwcbackend.dto.LoginRequest;
 import com.zwc.zwcbackend.dto.SignupRequest;
 import com.zwc.zwcbackend.entity.User;
 import com.zwc.zwcbackend.repository.UserRepository;
+import com.zwc.zwcbackend.util.JwtTokenUtil;
+import com.zwc.zwcbackend.security.CustomUserDetails;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -14,10 +17,11 @@ public class AuthService {
 
     @Autowired
     private UserRepository userRepository;
-    @Autowired
-    private JwtService jwtService;
 
-    private BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+    @Autowired
+    private JwtTokenUtil jwtTokenUtil;
+
+    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     public AuthResponse signup(SignupRequest request) {
         if (userRepository.findByEmail(request.getEmail()).isPresent()) {
@@ -42,12 +46,10 @@ public class AuthService {
 
         userRepository.save(user);
 
-        String token = jwtService.generateToken(user);
+        String token = jwtTokenUtil.generateToken(new CustomUserDetails(user));
 
         return new AuthResponse("User registered successfully", token);
     }
-
-
 
     public AuthResponse login(LoginRequest request) {
         User user = userRepository.findByEmail(request.getEmail())
@@ -57,8 +59,8 @@ public class AuthService {
             throw new RuntimeException("Invalid email or password");
         }
 
-        String token = jwtService.generateToken(user);
+        String token = jwtTokenUtil.generateToken(new CustomUserDetails(user));
+
         return new AuthResponse("Login successful", token);
     }
-
 }
