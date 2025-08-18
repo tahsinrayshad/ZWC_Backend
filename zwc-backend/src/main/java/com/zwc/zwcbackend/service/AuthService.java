@@ -8,6 +8,8 @@ import com.zwc.zwcbackend.repository.UserRepository;
 import com.zwc.zwcbackend.util.JwtTokenUtil;
 import com.zwc.zwcbackend.security.CustomUserDetails;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -62,5 +64,12 @@ public class AuthService {
         String token = jwtTokenUtil.generateToken(new CustomUserDetails(user));
 
         return new AuthResponse("Login successful", token);
+    }
+
+    public User getCurrentUser() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        String email = authentication.getName(); // assuming username = email
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found with email: " + email));
     }
 }
