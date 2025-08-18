@@ -3,14 +3,18 @@ package com.zwc.zwcbackend.service;
 import com.zwc.zwcbackend.dto.BlogRequest;
 import com.zwc.zwcbackend.dto.BlogResponse;
 import com.zwc.zwcbackend.entity.Blog;
+import com.zwc.zwcbackend.entity.Reaction;
 import com.zwc.zwcbackend.entity.User;
 import com.zwc.zwcbackend.repository.BlogRepository;
+import com.zwc.zwcbackend.repository.ReactionRepository;
 import com.zwc.zwcbackend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -18,9 +22,11 @@ public class BlogService {
 
     private final BlogRepository blogRepository;
     private final UserRepository userRepository;
+    private final ReactionRepository reactionRepository;
+
 
     // 🔐 Only logged-in users can create a blog
-    public Blog createBlog(BlogRequest request) {
+    public BlogResponse createBlog(BlogRequest request) {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
 
         User user = userRepository.findByEmail(email)
@@ -32,11 +38,12 @@ public class BlogService {
                 .user(user)
                 .build();
 
-        return blogRepository.save(blog);
+        Blog savedBlog = blogRepository.save(blog);
+        return toResponse(savedBlog);
     }
 
-    // 🔐 Only owner can update their blog
-    public Blog updateBlog(Long blogId, BlogRequest request) {
+    // 🔐 Only the owner can update their blog
+    public BlogResponse updateBlog(Long blogId, BlogRequest request) {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
 
         User user = userRepository.findByEmail(email)
@@ -52,10 +59,11 @@ public class BlogService {
         blog.setTitle(request.getTitle());
         blog.setContent(request.getContent());
 
-        return blogRepository.save(blog);
+        Blog updatedBlog = blogRepository.save(blog);
+        return toResponse(updatedBlog);
     }
 
-    // Delete Blog
+    // 🔐 Only owner or ADMIN can delete a blog
     public void deleteBlog(Long id, String currentUserEmail) {
         Blog blog = blogRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Blog not found"));
@@ -72,18 +80,38 @@ public class BlogService {
         blogRepository.delete(blog);
     }
 
-
     // ✅ Public: Get all blogs
-    public List<Blog> getAllBlogs() {
-        return blogRepository.findAll();
+    public List<BlogResponse> getAllBlogs() {
+        return blogRepository.findAll()
+                .stream()
+                .map(this::toResponse)
+                .toList();
     }
 
     // ✅ Public: Get blogs by user ID
-    public List<Blog> getBlogsByUserId(Long userId) {
-        return blogRepository.findByUserId(userId);
+    public List<BlogResponse> getBlogsByUserId(Long userId) {
+        Long currentUserId = getCurrentUserId(); // 👈 fetch it here
+
+        return blogRepository.findByUserId(userId)
+                .stream()
+                .map(blog -> toResponse(blog, currentUserId)) // 👈 pass both args manually
+                .toList();
+    }
+
+    private Long getCurrentUserId() {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"))
+                .getId();
     }
 
     public BlogResponse toResponse(Blog blog) {
+        Long currentUserId = getCurrentUserId(); // You already wrote this method earlier
+        return toResponse(blog, currentUserId);  // Delegate to the main two-arg method
+    }
+
+    // ✅ Internal mapper method
+    public BlogResponse toResponse(Blog blog, Long currentUserId) {
         BlogResponse response = new BlogResponse();
         response.setId(blog.getId());
         response.setTitle(blog.getTitle());
@@ -98,7 +126,41 @@ public class BlogService {
         userDto.setRole(blog.getUser().getRole().name());
 
         response.setUser(userDto);
+        response.setReactCount(blog.getReactedUserIds().size());
+        response.setLikedByCurrentUser(blog.getReactedUserIds().contains(currentUserId));
+
         return response;
     }
+
+    // Get a single blog by ID
+    public BlogResponse getBlogById(Long id) {
+        Blog blog = blogRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Blog not found"));
+        return toResponse(blog);
+    }
+
+
+    public void toggleBlogReaction(Long blogId, String userEmail) {
+        Blog blog = blogRepository.findById(blogId)
+                .orElseThrow(() -> new RuntimeException("Blog not found"));
+
+        User user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        Optional<Reaction> existing = reactionRepository.findByUserAndBlog(user, blog);
+
+        if (existing.isPresent()) {
+            reactionRepository.delete(existing.get()); // Unlike
+        } else {
+            Reaction reaction = Reaction.builder()
+                    .user(user)
+                    .blog(blog)
+                    .build();
+            reactionRepository.save(reaction); // Like
+        }
+    }
+
+
+
 
 }
